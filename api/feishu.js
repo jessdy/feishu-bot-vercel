@@ -1,11 +1,10 @@
 /**
- * 飞书消息机器人 Webhook - Vercel Serverless Function
- * 部署后请求地址: https://你的域名.vercel.app/api/feishu
+ * 飞书消息机器人 Webhook 处理逻辑
+ * 由 server.js 挂载到 POST /api/feishu（PM2 运行）
  */
 
 const { Client } = require('@larksuiteoapi/node-sdk');
 
-// 飞书应用凭证（从 Vercel 环境变量读取）
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
 
@@ -25,7 +24,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+  const body = req.body || {};
 
   // 1. URL 校验：飞书配置请求地址时会发带 challenge 的 POST
   if (body.challenge) {

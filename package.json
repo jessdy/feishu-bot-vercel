@@ -1,9 +1,23 @@
 {
-  "name": "feishu-bot-vercel",
+  "name": "feishu-bot",
   "version": "1.0.0",
   "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:start:prod": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:stop": "pm2 stop feishu-bot",
+    "pm2:restart": "pm2 restart feishu-bot",
+    "pm2:logs": "pm2 logs feishu-bot",
+    "pm2:delete": "pm2 delete feishu-bot"
+  },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.43.0"
+    "@larksuiteoapi/node-sdk": "^1.43.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.0"
   },
   "engines": {
     "node": ">=18"
