@@ -21,6 +21,29 @@ const larkClient =
       })
     : null;
 
+/**
+ * 根据用户发送的文本内容决定回复内容（可在此扩展更多指令）
+ * @param {string} rawText - 用户消息原文
+ * @returns {{ text: string }} - 用于 text 消息的 content
+ */
+function getReplyByContent(rawText) {
+  const text = (rawText || '').trim();
+  const lower = text.toLowerCase();
+
+  if (lower === '帮助' || lower === 'help') {
+    return {
+      text: '可用指令：\n• 帮助 / help - 显示本说明\n• ping - 测活\n• 其他内容 - 原样回显',
+    };
+  }
+  if (lower === 'ping') {
+    return { text: 'pong' };
+  }
+  if (text) {
+    return { text: `你说了：${text}` };
+  }
+  return { text: '（空）' };
+}
+
 /** 仅用 JSON 字符串写响应，避免 res.json() 导致 BOM/多余内容，满足飞书「合法 JSON」校验 */
 function replyJson(res, statusCode, data) {
   const body = JSON.stringify(data);
@@ -69,20 +92,35 @@ module.exports = async (req, res) => {
   if (header.event_type === 'im.message.receive_v1') {
     try {
       const message = event.message || {};
+      const chatType = message.chat_type || '';
       const chatId = message.chat_id;
-      const content = message.content ? JSON.parse(message.content) : {};
+      // 单聊(p2p) 时发消息需用 open_id；群聊用 chat_id（见飞书文档 230034 / 发送消息）
+      const sender = event.sender || {};
+      const senderId = sender.sender_id || sender.open_id || message.sender_id;
 
+      const content = message.content ? JSON.parse(message.content) : {};
+      const userText = content.text || '';
+      const replyContent = getReplyByContent(userText);
       const reply = {
         msg_type: 'text',
-        content: { text: `你说了：${content.text || '(空)'}` },
+        content: replyContent,
       };
 
-      await larkClient.im.message.create({
-        params: { receive_id_type: 'chat_id' },
-        data: { receive_id: chatId, ...reply },
-      });
+      const isP2p = String(chatType).toLowerCase() === 'p2p';
+      const receiveIdType = isP2p ? 'open_id' : 'chat_id';
+      const receiveId = isP2p ? senderId : chatId;
+
+      if (!receiveId) {
+        console.error('Process message: missing receive_id (open_id or chat_id)');
+      } else {
+        await larkClient.im.message.create({
+          params: { receive_id_type: receiveIdType },
+          data: { receive_id: receiveId, ...reply },
+        });
+      }
     } catch (err) {
       console.error('Process message error:', err);
+      if (err.response?.data) console.error('Feishu API response:', err.response.data);
       // 仍返回 200，避免飞书重复推送
     }
   }
