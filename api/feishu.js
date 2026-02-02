@@ -1,52 +1,69 @@
-const express = require('express');
+/**
+ * 飞书消息机器人 Webhook - Vercel Serverless Function
+ * 部署后请求地址: https://你的域名.vercel.app/api/feishu
+ */
+
 const { Client } = require('@larksuiteoapi/node-sdk');
 
-const app = express();
-app.use(express.json()); // 解析 JSON 请求体
-
-// 飞书应用凭证（从环境变量读取）
+// 飞书应用凭证（从 Vercel 环境变量读取）
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
 
-// 初始化飞书客户端
-const larkClient = new Client({
-  appId: APP_ID,
-  appSecret: APP_SECRET,
-  disableTokenCache: true, // Vercel 无服务器环境不需要缓存
-});
+const larkClient =
+  APP_ID && APP_SECRET
+    ? new Client({
+        appId: APP_ID,
+        appSecret: APP_SECRET,
+        disableTokenCache: true,
+      })
+    : null;
 
-// 处理飞书 Webhook 请求
-app.post('/', async (req, res) => {
-  const event = req.body;
-
-  // 验证请求（飞书会发送一个 challenge 用于验证）
-  if (event.challenge) {
-    return res.json({ challenge: event.challenge });
+module.exports = async (req, res) => {
+  // 仅接受 POST（飞书事件订阅与 URL 校验均为 POST）
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method Not Allowed' });
+    return;
   }
 
-  // 处理消息事件
-  if (event.header && event.header.event_type === 'im.message.receive_v1') {
-    const message = event.event.message;
-    const chatId = message.chat_id;
-    const content = JSON.parse(message.content);
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
 
-    // 简单回复
-    const reply = {
-      msg_type: 'text',
-      content: { text: `你说了：${content.text}` },
-    };
-
-    // 调用飞书 API 发送回复
-    await larkClient.im.message.create({
-      params: { receive_id_type: 'chat_id' },
-      data: { receive_id: chatId, ...reply },
-    });
-
-    return res.status(200).send('消息已处理');
+  // 1. URL 校验：飞书配置请求地址时会发带 challenge 的 POST
+  if (body.challenge) {
+    res.status(200).json({ challenge: body.challenge });
+    return;
   }
 
-  // 其他事件返回成功
-  res.status(200).send('事件已接收');
-});
+  if (!larkClient) {
+    console.error('APP_ID or APP_SECRET not configured');
+    res.status(500).json({ error: 'Server configuration error' });
+    return;
+  }
 
-module.exports = app;
+  // 2. 事件回调：im.message.receive_v1
+  const header = body.header || {};
+  const event = body.event || {};
+
+  if (header.event_type === 'im.message.receive_v1') {
+    try {
+      const message = event.message || {};
+      const chatId = message.chat_id;
+      const content = message.content ? JSON.parse(message.content) : {};
+
+      const reply = {
+        msg_type: 'text',
+        content: { text: `你说了：${content.text || '(空)'}` },
+      };
+
+      await larkClient.im.message.create({
+        params: { receive_id_type: 'chat_id' },
+        data: { receive_id: chatId, ...reply },
+      });
+    } catch (err) {
+      console.error('Process message error:', err);
+      // 仍返回 200，避免飞书重复推送
+    }
+  }
+
+  // 其他事件或处理完毕，均返回 200（飞书要求 3 秒内 200）
+  res.status(200).json({ ok: true });
+};

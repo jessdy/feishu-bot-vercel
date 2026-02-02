@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.43.0",
-    "express": "^4.21.2"
+    "@larksuiteoapi/node-sdk": "^1.43.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
