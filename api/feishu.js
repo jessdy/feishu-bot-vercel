@@ -12,6 +12,8 @@ const { Client } = require('@larksuiteoapi/node-sdk');
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
 
+console.log(APP_ID, APP_SECRET);
+
 const larkClient =
   APP_ID && APP_SECRET
     ? new Client({
