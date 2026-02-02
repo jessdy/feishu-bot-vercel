@@ -7,19 +7,17 @@
  * 配置了 Encrypt Key 时请求体为 {"encrypt":"..."}，需先解密再取 challenge（当前未实现解密）。
  */
 
-const { Client } = require('@larksuiteoapi/node-sdk');
+const { Client, withTenantKey } = require('@larksuiteoapi/node-sdk');
 
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
 
-console.log(APP_ID, APP_SECRET);
-
+// 不自建应用发消息需 token；disableTokenCache: true 时 SDK 不会附加 token，导致 99991661
 const larkClient =
   APP_ID && APP_SECRET
     ? new Client({
         appId: APP_ID,
         appSecret: APP_SECRET,
-        disableTokenCache: true,
       })
     : null;
 
@@ -115,10 +113,15 @@ module.exports = async (req, res) => {
       if (!receiveId) {
         console.error('Process message: missing receive_id (open_id or chat_id)');
       } else {
-        await larkClient.im.message.create({
-          params: { receive_id_type: receiveIdType },
-          data: { receive_id: receiveId, ...reply },
-        });
+        const tenantKey = header.tenant_key;
+        const requestOptions = tenantKey ? withTenantKey(tenantKey) : undefined;
+        await larkClient.im.message.create(
+          {
+            params: { receive_id_type: receiveIdType },
+            data: { receive_id: receiveId, ...reply },
+          },
+          requestOptions
+        );
       }
     } catch (err) {
       console.error('Process message error:', err);
