@@ -4,9 +4,9 @@ const { Client } = require('@larksuiteoapi/node-sdk');
 const app = express();
 app.use(express.json()); // 解析 JSON 请求体
 
-// 飞书应用凭证（后面替换为真实值）
-const APP_ID = 'cli_a7277dd96e5a100d';
-const APP_SECRET = 'tmVCe9fpxv7qWVwoWxuRJnaX1gXQpbGy';
+// 飞书应用凭证（从环境变量读取）
+const APP_ID = process.env.APP_ID;
+const APP_SECRET = process.env.APP_SECRET;
 
 // 初始化飞书客户端
 const larkClient = new Client({
