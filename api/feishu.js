@@ -24,11 +24,21 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const body = req.body || {};
+  // 兼容未解析的 body（如 Content-Type 非常规时）
+  let body = req.body;
+  if (!body || typeof body !== 'object') {
+    try {
+      body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : {};
+    } catch {
+      body = {};
+    }
+  }
 
-  // 1. URL 校验：飞书配置请求地址时会发带 challenge 的 POST
-  if (body.challenge) {
-    res.status(200).json({ challenge: body.challenge });
+  // 1. URL 校验：飞书配置请求地址时会发带 challenge 的 POST，必须返回纯 JSON
+  const challenge = body.challenge ?? body.CHALLENGE;
+  if (challenge != null && challenge !== '') {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.status(200).end(JSON.stringify({ challenge: String(challenge) }));
     return;
   }
 

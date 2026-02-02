@@ -7,9 +7,12 @@ const express = require('express');
 const feishuHandler = require('./api/feishu');
 
 const app = express();
-app.use(express.json());
-
-app.post('/api/feishu', feishuHandler);
+// 飞书校验/回调：仅对 POST 按 JSON 解析，再交给 handler
+app.post(
+  '/api/feishu',
+  express.json({ type: () => true }),
+  feishuHandler
+);
 
 // 健康检查
 app.get('/health', (_, res) => res.status(200).json({ ok: true }));
