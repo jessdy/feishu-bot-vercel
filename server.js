@@ -16,5 +16,5 @@ app.get('/health', (_, res) => res.status(200).json({ ok: true }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Feishu bot listening on http://0.0.0.0:${PORT}`);
+  console.log(`Feishu bot listening on http://0.0.0.0:${PORT}, APP_ID: ${process.env.APP_ID}`);
 });
