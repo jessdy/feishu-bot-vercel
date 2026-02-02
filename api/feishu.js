@@ -1,6 +1,10 @@
 /**
  * 飞书消息机器人 Webhook 处理逻辑
  * 由 server.js 挂载到 POST /api/feishu（PM2 运行）
+ *
+ * 飞书文档：请求地址校验需在 1 秒内返回 HTTP 200，响应体为 JSON 且包含 challenge 字段。
+ * 未配置 Encrypt Key 时请求体为 {"type":"url_verification","challenge":"xxx"} 或 {"challenge":"xxx"}。
+ * 配置了 Encrypt Key 时请求体为 {"encrypt":"..."}，需先解密再取 challenge（当前未实现解密）。
  */
 
 const { Client } = require('@larksuiteoapi/node-sdk');
@@ -17,14 +21,20 @@ const larkClient =
       })
     : null;
 
+/** 仅用 JSON 字符串写响应，避免 res.json() 导致 BOM/多余内容，满足飞书「合法 JSON」校验 */
+function replyJson(res, statusCode, data) {
+  const body = JSON.stringify(data);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Length', Buffer.byteLength(body, 'utf8'));
+  res.status(statusCode).end(body);
+}
+
 module.exports = async (req, res) => {
-  // 仅接受 POST（飞书事件订阅与 URL 校验均为 POST）
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method Not Allowed' });
+    replyJson(res, 405, { error: 'Method Not Allowed' });
     return;
   }
 
-  // 兼容未解析的 body（如 Content-Type 非常规时）
   let body = req.body;
   if (!body || typeof body !== 'object') {
     try {
@@ -34,17 +44,21 @@ module.exports = async (req, res) => {
     }
   }
 
-  // 1. URL 校验：飞书配置请求地址时会发带 challenge 的 POST，必须返回纯 JSON
-  const challenge = body.challenge ?? body.CHALLENGE;
-  if (challenge != null && challenge !== '') {
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.status(200).end(JSON.stringify({ challenge: String(challenge) }));
+  // 1. URL 校验（飞书文档：type=url_verification 或 顶层含 challenge）
+  const isUrlVerification =
+    body.type === 'url_verification' ||
+    (body.challenge != null && body.challenge !== '') ||
+    (body.CHALLENGE != null && body.CHALLENGE !== '');
+  const challenge = body.challenge ?? body.CHALLENGE ?? '';
+
+  if (isUrlVerification && challenge !== '') {
+    replyJson(res, 200, { challenge: String(challenge) });
     return;
   }
 
   if (!larkClient) {
     console.error('APP_ID or APP_SECRET not configured');
-    res.status(500).json({ error: 'Server configuration error' });
+    replyJson(res, 500, { error: 'Server configuration error' });
     return;
   }
 
@@ -73,6 +87,6 @@ module.exports = async (req, res) => {
     }
   }
 
-  // 其他事件或处理完毕，均返回 200（飞书要求 3 秒内 200）
-  res.status(200).json({ ok: true });
+  // 其他事件或处理完毕，均返回 200（飞书要求 3 秒内 200），且必须为合法 JSON
+  replyJson(res, 200, {});
 };
