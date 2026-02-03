@@ -77,13 +77,18 @@ async function uploadImageToFeishu(token, imageBuffer) {
 async function loginHandler() {
   let cookieStr;
   try {
+    if (!fs.existsSync(OA_COOKIE_FILE)) {
+      fs.writeFileSync(OA_COOKIE_FILE, '');
+    }
     cookieStr = await fs.readFile(OA_COOKIE_FILE, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') return '未找到 cookie 文件，请先配置 .oa-cookie 或 OA_COOKIE_FILE';
     throw e;
   }
   cookieStr = (cookieStr || '').trim();
-  if (!cookieStr) return 'cookie 文件为空';
+  if (!cookieStr) {
+    await reloginHandler();
+  }
 
   return new Promise((resolve) => {
     const url = new URL(OA_LOGIN_CHECK_URL);
