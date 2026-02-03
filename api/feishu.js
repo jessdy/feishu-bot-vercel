@@ -222,8 +222,10 @@ async function reloginHandler(feishuContext) {
           resolve('验证码接口返回格式未知');
           return;
         }
+        console.log('验证码已获取，开始处理，feishuContext:', feishuContext);
         (async () => {
           if (feishuContext?.larkClient && feishuContext?.receiveId) {
+            console.log('开始上传验证码图片到飞书');
             const token = await getTenantAccessToken();
             if (!token) {
               resolve('验证码已获取，但飞书 token 获取失败');
