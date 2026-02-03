@@ -185,7 +185,7 @@ async function getReplyByContent(rawText, feishuContext, union_id, user_id, user
   }
 
   if (lower && lower === "答题") {
-    const result = await answerQuestionHandler(userInfo);
+    const result = await answerQuestionHandler(userInfo, union_id);
     return { text: result };
   }
 }
@@ -338,8 +338,8 @@ function saveAnswerRequest(topic, cookieStr, aaaaa) {
  * 若返回题目含 id 与 answer，会再调用 saveAnswer 自动提交答案。
  * @returns {Promise<string>} 成功返回格式化后的题目与答案及提交结果，失败返回原因说明
  */
-async function answerQuestionHandler(userInfo) {
-  userInfo = userInfo.data;
+async function answerQuestionHandler(userInfo, union_id) {
+  userInfo = userInfo.data.user;
   let cookieStr = "";
   try {
     await fs.access(OA_COOKIE_FILE + "_" + userInfo.union_id);
