@@ -272,7 +272,7 @@ async function loginWithVerifyCodeHandler(verifyCode) {
         }
         console.log("loginWithVerifyCodeHandler json", json);
         // 常见成功：code 0 或 success true；失败：code 非 0 或 message
-        const code = json.code ?? json.status;
+        const code = json.result ?? json.status;
         const success = json.success === true || code === 0 || code === "0";
         if (success) {
           resolve("登录有效");
