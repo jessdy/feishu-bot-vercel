@@ -171,7 +171,7 @@ async function getReplyByContent(rawText, feishuContext, union_id, user_id, user
   if (lower && lower.includes("登录")) {
     const result = await loginHandler(union_id);
     if (result === "登录有效") {
-      return { text: userInfo.data.user_id + "登录成功" };
+      return { text: userInfo.data.user.user_id + "登录成功" };
     }
     const verifyMsg = await reloginHandler(feishuContext ?? null, union_id);
     return { text: `${result}\n${verifyMsg}` };
@@ -181,7 +181,7 @@ async function getReplyByContent(rawText, feishuContext, union_id, user_id, user
   console.log("lower", lower.length);
   if (lower && lower.length === 4) {
     const result = await loginWithVerifyCodeHandler(lower, union_id, user_id, userInfo);
-    return { text: userInfo.data.user_id + result };
+    return { text: userInfo.data.user.user_id + result };
   }
 
   if (lower && lower === "答题") {
