@@ -96,7 +96,11 @@ module.exports = async (req, res) => {
       const chatId = message.chat_id;
       // 单聊(p2p) 时发消息需用 open_id；群聊用 chat_id（见飞书文档 230034 / 发送消息）
       const sender = event.sender || {};
-      const senderId = sender.sender_id || sender.open_id || message.sender_id;
+      let senderId = sender.sender_id || sender.open_id || message.sender_id;
+      // 飞书事件里 sender_id 可能是对象 { open_id, union_id, user_id }，receive_id 必须是字符串
+      if (senderId && typeof senderId === 'object' && senderId.open_id) {
+        senderId = senderId.open_id;
+      }
 
       const content = message.content ? JSON.parse(message.content) : {};
       const userText = content.text || '';
