@@ -199,10 +199,18 @@ async function reloginHandler(feishuContext) {
     const req = https.request(options, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
-      res.on('end', () => {
+      res.on('end', async () => {
         if (res.statusCode !== 200) {
           resolve(`验证码获取失败（HTTP ${res.statusCode}）`);
           return;
+        }
+        // 获取set-cookie中的JSESSIONID
+        const cookies = res.headers['set-cookie']
+        if (cookies) {
+          console.log('cookies', cookies);
+          // 写入cookie文件
+          await fs.writeFile(OA_COOKIE_FILE, cookies.join('; '));
+          console.log('cookie文件写入成功');
         }
         const contentType = (res.headers['content-type'] || '').toLowerCase();
         const body = Buffer.concat(chunks);
