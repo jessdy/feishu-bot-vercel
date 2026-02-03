@@ -169,7 +169,7 @@ async function getReplyByContent(rawText, feishuContext) {
   }
 
   // 如果输入的是4位验证码，则调用登录接口
-  console.log("lower", lower);
+  console.log("lower", lower.length);
   if (lower && lower.length === 4) {
     return await loginWithVerifyCodeHandler(lower);
   }
