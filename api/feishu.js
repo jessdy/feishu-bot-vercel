@@ -96,15 +96,15 @@ async function uploadImageToFeishu(token, imageBuffer) {
  * 读取本地 cookie 文件，用 cookie 请求 OA 接口校验是否登录有效。
  * @returns {Promise<string>} 有效返回「登录有效」，否则返回原因说明
  */
-async function loginHandler() {
+async function loginHandler(union_id) {
   let cookieStr;
   try {
     try {
-      await fs.access(OA_COOKIE_FILE);
+      await fs.access(OA_COOKIE_FILE + "_" + union_id);
     } catch (e) {
-      if (e.code === "ENOENT") await fs.writeFile(OA_COOKIE_FILE, "");
+      if (e.code === "ENOENT") await fs.writeFile(OA_COOKIE_FILE + "_" + union_id, "");
     }
-    cookieStr = await fs.readFile(OA_COOKIE_FILE, "utf8");
+    cookieStr = await fs.readFile(OA_COOKIE_FILE + "_" + union_id, "utf8");
   } catch (e) {
     console.error("读取 cookie 文件失败：", e);
     if (e.code === "ENOENT")
@@ -113,7 +113,7 @@ async function loginHandler() {
   }
   cookieStr = (cookieStr || "").trim();
   if (!cookieStr) {
-    return await reloginHandler();
+    return await reloginHandler(null, union_id);
   }
 
   return new Promise((resolve) => {
@@ -159,30 +159,33 @@ async function loginHandler() {
  * 根据用户发送的文本内容决定回复内容（可在此扩展更多指令）
  * @param {string} rawText - 用户消息原文
  * @param {{ larkClient: import('@larksuiteoapi/node-sdk').Client; receiveId: string; receiveIdType: string; requestOptions?: unknown } | null} [feishuContext] - 飞书上下文，用于上传验证码图片并发送
+ * @param {string} union_id - 飞书用户 union_id
+ * @param {string} user_id - 飞书用户 user_id
+ * @param {import('@larksuiteoapi/node-sdk').TenantKey} tenantKey - 飞书租户 key
  * @returns {Promise<{ text: string }>} - 用于 text 消息的 content
  */
-async function getReplyByContent(rawText, feishuContext) {
+async function getReplyByContent(rawText, feishuContext, union_id, user_id, userInfo) {
   const text = (rawText || "").trim();
   const lower = text.toLowerCase();
 
   if (lower && lower.includes("登录")) {
-    const result = await loginHandler();
+    const result = await loginHandler(union_id);
     if (result === "登录有效") {
-      return { text: "登录成功" };
+      return { text: userInfo.data.user_id + "登录成功" };
     }
-    const verifyMsg = await reloginHandler(feishuContext ?? null);
+    const verifyMsg = await reloginHandler(feishuContext ?? null, union_id);
     return { text: `${result}\n${verifyMsg}` };
   }
 
   // 如果输入的是4位验证码，则调用登录接口
   console.log("lower", lower.length);
   if (lower && lower.length === 4) {
-    const result = await loginWithVerifyCodeHandler(lower);
-    return { text: result };
+    const result = await loginWithVerifyCodeHandler(lower, union_id, user_id, userInfo);
+    return { text: userInfo.data.user_id + result };
   }
 
   if (lower && lower === "答题") {
-    const result = await answerQuestionHandler();
+    const result = await answerQuestionHandler(userInfo);
     return { text: result };
   }
 }
@@ -335,11 +338,12 @@ function saveAnswerRequest(topic, cookieStr, aaaaa) {
  * 若返回题目含 id 与 answer，会再调用 saveAnswer 自动提交答案。
  * @returns {Promise<string>} 成功返回格式化后的题目与答案及提交结果，失败返回原因说明
  */
-async function answerQuestionHandler() {
+async function answerQuestionHandler(userInfo) {
+  userInfo = userInfo.data;
   let cookieStr = "";
   try {
-    await fs.access(OA_COOKIE_FILE);
-    cookieStr = (await fs.readFile(OA_COOKIE_FILE, "utf8")) || "";
+    await fs.access(OA_COOKIE_FILE + "_" + userInfo.union_id);
+    cookieStr = (await fs.readFile(OA_COOKIE_FILE + "_" + userInfo.union_id, "utf8")) || "";
   } catch (e) {
     if (e.code === "ENOENT") return "请先发送「登录」完成 OA 登录后再答题";
     console.error("读取 cookie 失败：", e);
@@ -427,17 +431,18 @@ const OA_VALID_LOGIN_HEADERS = {
  * @param {string} verifyCode - 4 位验证码
  * @returns {Promise<string>} 成功返回「登录有效」，失败返回原因说明
  */
-async function loginWithVerifyCodeHandler(verifyCode) {
-  const account = process.env.OA_ACCOUNT;
-  const password = process.env.OA_PASSWORD;
+async function loginWithVerifyCodeHandler(verifyCode, union_id, user_id, userInfo) {
+  userInfo = userInfo.data;
+  const account = userInfo.user_id;
+  const password = userInfo.employee_no;
   if (!account || !password) {
     return "未配置 OA_ACCOUNT 或 OA_PASSWORD 环境变量";
   }
 
   let cookieStr = "";
   try {
-    await fs.access(OA_COOKIE_FILE);
-    cookieStr = (await fs.readFile(OA_COOKIE_FILE, "utf8")) || "";
+    await fs.access(OA_COOKIE_FILE + "_" + union_id);
+    cookieStr = (await fs.readFile(OA_COOKIE_FILE + "_" + union_id, "utf8")) || "";
   } catch (e) {
     if (e.code !== "ENOENT") {
       console.error("读取 cookie 文件失败：", e);
@@ -481,7 +486,7 @@ async function loginWithVerifyCodeHandler(verifyCode) {
         const setCookie = res.headers["set-cookie"];
         if (setCookie && setCookie.length) {
           try {
-            await fs.writeFile(OA_COOKIE_FILE, setCookie.join("; ") + ";" + cookieStr);
+            await fs.writeFile(OA_COOKIE_FILE + "_" + union_id, setCookie.join("; ") + ";" + cookieStr);
             console.log("loginWithVerifyCodeHandler cookieStr", cookieStr);
             console.log("loginWithVerifyCodeHandler setCookie", setCookie);
           } catch (e) {
@@ -543,7 +548,7 @@ const OA_VERIFY_CODE_HEADERS = {
  * @param {{ larkClient: import('@larksuiteoapi/node-sdk').Client; receiveId: string; receiveIdType: string; requestOptions?: unknown } | null} [feishuContext] - 飞书上下文，用于上传并发送图片消息
  * @returns {Promise<string>} 成功返回说明文案，失败返回错误信息
  */
-async function reloginHandler(feishuContext) {
+async function reloginHandler(feishuContext, union_id) {
   return new Promise((resolve) => {
     resolve("验证码获取失败，请重新登录 OA");
     const url = new URL(OA_VERIFY_CODE_URL);
@@ -568,7 +573,7 @@ async function reloginHandler(feishuContext) {
         if (cookies) {
           console.log("cookies", cookies);
           // 写入cookie文件
-          await fs.writeFile(OA_COOKIE_FILE, cookies.join("; "));
+          await fs.writeFile(OA_COOKIE_FILE + "_" + union_id, cookies.join("; "));
           console.log("cookie文件写入成功");
         }
         const contentType = (res.headers["content-type"] || "").toLowerCase();
@@ -705,18 +710,41 @@ module.exports = async (req, res) => {
       if (senderId && typeof senderId === "object" && senderId.open_id) {
         senderId = senderId.open_id;
       }
+      const union_id = sender.sender_id?.union_id;
+      const user_id = sender.sender_id?.user_id;
+      const tenantKey = header.tenant_key;
+      const requestOptions = tenantKey ? withTenantKey(tenantKey) : undefined;
+      // 通过 user_id 获取飞书用户信息（需带租户上下文）
+      let userInfo = null;
+      if (user_id) {
+        try {
+          userInfo = await larkClient.contact.v3.user.get(
+            {
+              path: {
+                user_id: user_id,
+              },
+              query: {
+                user_id_type: "open_id",
+                department_id_type: "open_department_id",
+              },
+            },
+            requestOptions,
+          );
+        } catch (e) {
+          console.error("获取用户信息失败:", e?.response?.data ?? e.message);
+        }
+      }
+      console.log("userInfo", userInfo);
       console.log("sender", sender);
       const content = message.content ? JSON.parse(message.content) : {};
       const userText = content.text || "";
       const isP2p = String(chatType).toLowerCase() === "p2p";
       const receiveIdType = isP2p ? "open_id" : "chat_id";
       const receiveId = isP2p ? senderId : chatId;
-      const tenantKey = header.tenant_key;
-      const requestOptions = tenantKey ? withTenantKey(tenantKey) : undefined;
       const feishuContext = receiveId
         ? { larkClient, receiveId, receiveIdType, requestOptions }
         : null;
-      const replyContent = await getReplyByContent(userText, feishuContext);
+      const replyContent = await getReplyByContent(userText, feishuContext, union_id, user_id, userInfo);
       // 飞书发送消息接口要求 content 为 JSON 字符串，不能传对象
       const reply = {
         msg_type: "text",
