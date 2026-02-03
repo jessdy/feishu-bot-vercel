@@ -7,10 +7,10 @@
  * 配置了 Encrypt Key 时请求体为 {"encrypt":"..."}，需先解密再取 challenge（当前未实现解密）。
  */
 
-const fs = require('fs').promises;
-const path = require('path');
-const https = require('https');
-const { Client, withTenantKey } = require('@larksuiteoapi/node-sdk');
+const fs = require("fs").promises;
+const path = require("path");
+const https = require("https");
+const { Client, withTenantKey } = require("@larksuiteoapi/node-sdk");
 
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
@@ -25,14 +25,21 @@ const larkClient =
     : null;
 
 /** OA 登录校验：cookie 文件路径，可用环境变量 OA_COOKIE_FILE 覆盖 */
-const OA_COOKIE_FILE = path.join(process.cwd(), '/data/.oa-cookie');
-const OA_LOGIN_CHECK_URL = 'https://oa.teligen-cloud.com:8280/meip/loginController/getLoginInfo';
-const OA_VERIFY_CODE_URL = 'https://oa.teligen-cloud.com:8280/meip/loginController/verifyCode/ImageCode';
-const OA_VERIFY_CODE_IMAGE_PATH = path.join(process.cwd(), '/data/.oa-verify-code.png');
+const OA_COOKIE_FILE = path.join(process.cwd(), "/data/.oa-cookie");
+const OA_LOGIN_CHECK_URL =
+  "https://oa.teligen-cloud.com:8280/meip/loginController/getLoginInfo";
+const OA_VERIFY_CODE_URL =
+  "https://oa.teligen-cloud.com:8280/meip/loginController/verifyCode/ImageCode";
+const OA_VALID_LOGIN_URL =
+  "https://oa.teligen-cloud.com:8280/meip/loginController/validLogin";
+const OA_VERIFY_CODE_IMAGE_PATH = path.join(
+  process.cwd(),
+  "/data/.oa-verify-code.png",
+);
 
 /** 飞书上传图片并获取 image_key（用于发送图片消息） */
-const FEISHU_IMAGES_URL = 'https://open.feishu.cn/open-apis/im/v1/images';
-const FEISHU_IMAGE_TYPE = 'message';
+const FEISHU_IMAGES_URL = "https://open.feishu.cn/open-apis/im/v1/images";
+const FEISHU_IMAGE_TYPE = "message";
 
 /**
  * 获取飞书 tenant_access_token（用于上传图片等 Open API）
@@ -41,11 +48,17 @@ const FEISHU_IMAGE_TYPE = 'message';
 async function getTenantAccessToken() {
   if (!APP_ID || !APP_SECRET) return null;
   const body = JSON.stringify({ app_id: APP_ID, app_secret: APP_SECRET });
-  const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body, 'utf8') },
-    body,
-  });
+  const res = await fetch(
+    "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body, "utf8"),
+      },
+      body,
+    },
+  );
   const json = await res.json();
   return json.tenant_access_token || null;
 }
@@ -58,15 +71,19 @@ async function getTenantAccessToken() {
  */
 async function uploadImageToFeishu(token, imageBuffer) {
   const form = new FormData();
-  form.append('image', new Blob([imageBuffer], { type: 'image/png' }), 'verify.png');
-  form.append('image_type', FEISHU_IMAGE_TYPE);
+  form.append(
+    "image",
+    new Blob([imageBuffer], { type: "image/png" }),
+    "verify.png",
+  );
+  form.append("image_type", FEISHU_IMAGE_TYPE);
   const res = await fetch(FEISHU_IMAGES_URL, {
-    method: 'POST',
+    method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   });
   const json = await res.json();
-  console.log('上传验证码图片到飞书成功，返回数据：', json);
+  console.log("上传验证码图片到飞书成功，返回数据：", json);
   const key = json.data?.image_key ?? json.image_key;
   return key || null;
 }
@@ -81,15 +98,16 @@ async function loginHandler() {
     try {
       await fs.access(OA_COOKIE_FILE);
     } catch (e) {
-      if (e.code === 'ENOENT') await fs.writeFile(OA_COOKIE_FILE, '');
+      if (e.code === "ENOENT") await fs.writeFile(OA_COOKIE_FILE, "");
     }
-    cookieStr = await fs.readFile(OA_COOKIE_FILE, 'utf8');
+    cookieStr = await fs.readFile(OA_COOKIE_FILE, "utf8");
   } catch (e) {
-    console.error('读取 cookie 文件失败：', e);
-    if (e.code === 'ENOENT') return '未找到 cookie 文件，请先配置 .oa-cookie 或 OA_COOKIE_FILE';
+    console.error("读取 cookie 文件失败：", e);
+    if (e.code === "ENOENT")
+      return "未找到 cookie 文件，请先配置 .oa-cookie 或 OA_COOKIE_FILE";
     throw e;
   }
-  cookieStr = (cookieStr || '').trim();
+  cookieStr = (cookieStr || "").trim();
   if (!cookieStr) {
     return await reloginHandler();
   }
@@ -100,30 +118,32 @@ async function loginHandler() {
       hostname: url.hostname,
       port: url.port || 443,
       path: url.pathname + url.search,
-      method: 'POST',
+      method: "POST",
       headers: { Cookie: cookieStr },
       rejectUnauthorized: false,
     };
     const req = https.request(options, (res) => {
-      let body = '';
-      res.on('data', (chunk) => { body += chunk; });
-      res.on('end', () => {
+      let body = "";
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => {
         if (res.statusCode !== 200) {
           resolve(`登录已失效（HTTP ${res.statusCode}）`);
           return;
         }
         // 登录页会包含「登 录」「温馨提示」等文案，有用户信息或非登录页则视为有效
         if (body && body.startsWith("{")) {
-          resolve('登录已失效，请重新登录 OA');
+          resolve("登录已失效，请重新登录 OA");
           return;
         }
-        resolve('登录有效');
+        resolve("登录有效");
       });
     });
-    req.on('error', (err) => resolve(`请求失败：${err.message}`));
+    req.on("error", (err) => resolve(`请求失败：${err.message}`));
     req.setTimeout(10000, () => {
       req.destroy();
-      resolve('请求超时');
+      resolve("请求超时");
     });
     req.end();
   });
@@ -136,48 +156,168 @@ async function loginHandler() {
  * @returns {Promise<{ text: string }>} - 用于 text 消息的 content
  */
 async function getReplyByContent(rawText, feishuContext) {
-  const text = (rawText || '').trim();
+  const text = (rawText || "").trim();
   const lower = text.toLowerCase();
 
-  if (lower && lower.includes('登录')) {
+  if (lower && lower.includes("登录")) {
     const result = await loginHandler();
-    if (result === '登录有效') {
-      return { text: '登录成功' };
+    if (result === "登录有效") {
+      return { text: "登录成功" };
     }
     const verifyMsg = await reloginHandler(feishuContext ?? null);
     return { text: `${result}\n${verifyMsg}` };
   }
 
-  if (lower === '帮助' || lower === 'help') {
+  if (lower && lower.length === 4) {
+    const result = await loginWithVerifyCodeHandler(lower);
+    if (result === "登录有效") {
+      return { text: "登录成功" };
+    }
+  }
+
+  if (lower === "帮助" || lower === "help") {
     return {
-      text: '可用指令：\n• 帮助 / help - 显示本说明\n• ping - 测活\n• 其他内容 - 原样回显',
+      text: "可用指令：\n• 帮助 / help - 显示本说明\n• ping - 测活\n• 其他内容 - 原样回显",
     };
   }
-  if (lower === 'ping') {
-    return { text: 'pong' };
+  if (lower === "ping") {
+    return { text: "pong" };
   }
   if (text) {
     return { text: `你说了：${text}` };
   }
-  return { text: '（空）' };
+  return { text: "（空）" };
+}
+
+/** validLogin 请求头（与浏览器一致） */
+const OA_VALID_LOGIN_HEADERS = {
+  Accept: "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+  Connection: "keep-alive",
+  "Content-Type": "application/x-www-form-urlencoded",
+  Origin: "https://oa.teligen-cloud.com:8280",
+  Referer:
+    "https://oa.teligen-cloud.com:8280/meip/view/login/login.html",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "User-Agent":
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0",
+  "X-Requested-With": "XMLHttpRequest",
+  aaaaa: "null",
+};
+
+/**
+ * 使用验证码调用 OA validLogin 接口登录；账号、密码从环境变量 OA_ACCOUNT、OA_PASSWORD 读取（密码可为明文或与前端一致的加密串）。
+ * @param {string} verifyCode - 4 位验证码
+ * @returns {Promise<string>} 成功返回「登录有效」，失败返回原因说明
+ */
+async function loginWithVerifyCodeHandler(verifyCode) {
+  const account = process.env.OA_ACCOUNT;
+  const password = process.env.OA_PASSWORD;
+  if (!account || !password) {
+    return "未配置 OA_ACCOUNT 或 OA_PASSWORD 环境变量";
+  }
+
+  let cookieStr = "";
+  try {
+    await fs.access(OA_COOKIE_FILE);
+    cookieStr = (await fs.readFile(OA_COOKIE_FILE, "utf8")) || "";
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("读取 cookie 文件失败：", e);
+      return "读取 cookie 失败，请先发送「登录」获取验证码";
+    }
+  }
+  cookieStr = cookieStr.trim();
+  if (!cookieStr) {
+    return "无有效 cookie，请先发送「登录」获取验证码后再输入验证码";
+  }
+
+  const body = new URLSearchParams({
+    account,
+    password,
+    mxAccount: "null",
+    imgCode: (verifyCode || "").trim(),
+  }).toString();
+
+  return new Promise((resolve) => {
+    const url = new URL(OA_VALID_LOGIN_URL);
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method: "POST",
+      headers: {
+        ...OA_VALID_LOGIN_HEADERS,
+        Cookie: cookieStr,
+        "Content-Length": Buffer.byteLength(body, "utf8"),
+      },
+      rejectUnauthorized: false,
+    };
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", async () => {
+        if (res.statusCode !== 200) {
+          resolve(`登录请求失败（HTTP ${res.statusCode}）`);
+          return;
+        }
+        const setCookie = res.headers["set-cookie"];
+        if (setCookie && setCookie.length) {
+          try {
+            await fs.writeFile(OA_COOKIE_FILE, setCookie.join("; "));
+          } catch (e) {
+            console.error("写入 cookie 失败：", e);
+          }
+        }
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let json;
+        try {
+          json = JSON.parse(raw);
+        } catch (_) {
+          resolve("登录接口返回非 JSON");
+          return;
+        }
+        // 常见成功：code 0 或 success true；失败：code 非 0 或 message
+        const code = json.code ?? json.status;
+        const success = json.success === true || code === 0 || code === "0";
+        if (success) {
+          resolve("登录有效");
+          return;
+        }
+        const msg = json.message ?? json.msg ?? json.error ?? raw;
+        resolve("登录失败：" + (typeof msg === "string" ? msg : JSON.stringify(msg)));
+      });
+    });
+    req.on("error", (err) => resolve("登录请求失败：" + err.message));
+    req.setTimeout(10000, () => {
+      req.destroy();
+      resolve("登录请求超时");
+    });
+    req.write(body, "utf8");
+    req.end();
+  });
 }
 
 /** 请求 OA 验证码图片接口使用的请求头（与浏览器一致） */
 const OA_VERIFY_CODE_HEADERS = {
-  Accept: 'application/json',
-  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-  Connection: 'keep-alive',
-  Referer: 'https://oa.teligen-cloud.com:8280/meip/view/login/login.html?userId=null',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-origin',
-  'User-Agent':
-    'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 Edg/144.0.0.0',
-  'X-Requested-With': 'XMLHttpRequest',
-  aaaaa: 'null',
-  'sec-ch-ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Microsoft Edge";v="144"',
-  'sec-ch-ua-mobile': '?1',
-  'sec-ch-ua-platform': '"Android"',
+  Accept: "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+  Connection: "keep-alive",
+  Referer:
+    "https://oa.teligen-cloud.com:8280/meip/view/login/login.html?userId=null",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "User-Agent":
+    "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 Edg/144.0.0.0",
+  "X-Requested-With": "XMLHttpRequest",
+  aaaaa: "null",
+  "sec-ch-ua":
+    '"Not(A:Brand";v="8", "Chromium";v="144", "Microsoft Edge";v="144"',
+  "sec-ch-ua-mobile": "?1",
+  "sec-ch-ua-platform": '"Android"',
 };
 
 /**
@@ -187,64 +327,68 @@ const OA_VERIFY_CODE_HEADERS = {
  */
 async function reloginHandler(feishuContext) {
   return new Promise((resolve) => {
-    resolve('验证码获取失败，请重新登录 OA');
+    resolve("验证码获取失败，请重新登录 OA");
     const url = new URL(OA_VERIFY_CODE_URL);
     const options = {
       hostname: url.hostname,
       port: url.port || 443,
       path: url.pathname + url.search,
-      method: 'POST',
+      method: "POST",
       headers: OA_VERIFY_CODE_HEADERS,
       rejectUnauthorized: false,
     };
     const req = https.request(options, (res) => {
       const chunks = [];
-      res.on('data', (chunk) => chunks.push(chunk));
-      res.on('end', async () => {
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", async () => {
         if (res.statusCode !== 200) {
           resolve(`验证码获取失败（HTTP ${res.statusCode}）`);
           return;
         }
         // 获取set-cookie中的JSESSIONID
-        const cookies = res.headers['set-cookie']
+        const cookies = res.headers["set-cookie"];
         if (cookies) {
-          console.log('cookies', cookies);
+          console.log("cookies", cookies);
           // 写入cookie文件
-          await fs.writeFile(OA_COOKIE_FILE, cookies.join('; '));
-          console.log('cookie文件写入成功');
+          await fs.writeFile(OA_COOKIE_FILE, cookies.join("; "));
+          console.log("cookie文件写入成功");
         }
-        const contentType = (res.headers['content-type'] || '').toLowerCase();
+        const contentType = (res.headers["content-type"] || "").toLowerCase();
         const body = Buffer.concat(chunks);
         let imageBuffer = null;
-        if (contentType.includes('application/json')) {
+        if (contentType.includes("application/json")) {
           try {
-            const json = JSON.parse(body.toString('utf8'));
+            const json = JSON.parse(body.toString("utf8"));
             const base64 = json.png_base64;
-            console.log('验证码接口返回数据：', json);
-            if (base64) imageBuffer = Buffer.from(base64.slice(22), 'base64');
+            console.log("验证码接口返回数据：", json);
+            if (base64) imageBuffer = Buffer.from(base64.slice(22), "base64");
           } catch (_) {
-            console.error('解析验证码接口返回数据失败：', body.toString('utf8'));
-            resolve('验证码接口返回数据解析失败');
+            console.error(
+              "解析验证码接口返回数据失败：",
+              body.toString("utf8"),
+            );
+            resolve("验证码接口返回数据解析失败");
             return;
           }
         }
-        if (!imageBuffer && (contentType.includes('image/') || body.length > 0)) imageBuffer = body;
+        if (!imageBuffer && (contentType.includes("image/") || body.length > 0))
+          imageBuffer = body;
         if (!imageBuffer) {
-          resolve('验证码接口返回格式未知');
+          resolve("验证码接口返回格式未知");
           return;
         }
         (async () => {
           if (feishuContext?.larkClient && feishuContext?.receiveId) {
-            console.log('开始上传验证码图片到飞书');
+            console.log("开始上传验证码图片到飞书");
             const token = await getTenantAccessToken();
             if (!token) {
-              resolve('验证码已获取，但飞书 token 获取失败');
+              resolve("验证码已获取，但飞书 token 获取失败");
               return;
             }
-            console.log('飞书 token 获取成功，开始上传验证码图片到飞书');
+            console.log("飞书 token 获取成功，开始上传验证码图片到飞书");
             const imageKey = await uploadImageToFeishu(token, imageBuffer);
             if (!imageKey) {
-              resolve('验证码已获取，但上传飞书失败');
+              resolve("验证码已获取，但上传飞书失败");
               return;
             }
             try {
@@ -253,15 +397,18 @@ async function reloginHandler(feishuContext) {
                   params: { receive_id_type: feishuContext.receiveIdType },
                   data: {
                     receive_id: feishuContext.receiveId,
-                    msg_type: 'image',
+                    msg_type: "image",
                     content: JSON.stringify({ image_key: imageKey }),
                   },
                 },
-                feishuContext.requestOptions
+                feishuContext.requestOptions,
               );
-              resolve('已获取验证码并已发送至当前会话');
+              resolve("已获取验证码并已发送至当前会话");
             } catch (e) {
-              resolve('验证码已获取并已上传，但发送消息失败：' + (e.message || String(e)));
+              resolve(
+                "验证码已获取并已上传，但发送消息失败：" +
+                  (e.message || String(e)),
+              );
             }
             return;
           }
@@ -269,15 +416,15 @@ async function reloginHandler(feishuContext) {
             await fs.writeFile(OA_VERIFY_CODE_IMAGE_PATH, imageBuffer);
             // resolve(`验证码已获取并保存至 ${OA_VERIFY_CODE_IMAGE_PATH}`);
           } catch (e) {
-            resolve('验证码保存失败：' + (e.message || String(e)));
+            resolve("验证码保存失败：" + (e.message || String(e)));
           }
-        })().catch((e) => resolve('处理失败：' + (e.message || String(e))));
+        })().catch((e) => resolve("处理失败：" + (e.message || String(e))));
       });
     });
-    req.on('error', (err) => resolve(`验证码请求失败：${err.message}`));
+    req.on("error", (err) => resolve(`验证码请求失败：${err.message}`));
     req.setTimeout(10000, () => {
       req.destroy();
-      resolve('验证码请求超时');
+      resolve("验证码请求超时");
     });
     req.end();
   });
@@ -286,21 +433,21 @@ async function reloginHandler(feishuContext) {
 /** 仅用 JSON 字符串写响应，避免 res.json() 导致 BOM/多余内容，满足飞书「合法 JSON」校验 */
 function replyJson(res, statusCode, data) {
   const body = JSON.stringify(data);
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Length', Buffer.byteLength(body, 'utf8'));
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Length", Buffer.byteLength(body, "utf8"));
   res.status(statusCode).end(body);
 }
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
-    replyJson(res, 405, { error: 'Method Not Allowed' });
+  if (req.method !== "POST") {
+    replyJson(res, 405, { error: "Method Not Allowed" });
     return;
   }
 
   let body = req.body;
-  if (!body || typeof body !== 'object') {
+  if (!body || typeof body !== "object") {
     try {
-      body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : {};
+      body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : {};
     } catch {
       body = {};
     }
@@ -308,19 +455,19 @@ module.exports = async (req, res) => {
 
   // 1. URL 校验（飞书文档：type=url_verification 或 顶层含 challenge）
   const isUrlVerification =
-    body.type === 'url_verification' ||
-    (body.challenge != null && body.challenge !== '') ||
-    (body.CHALLENGE != null && body.CHALLENGE !== '');
-  const challenge = body.challenge ?? body.CHALLENGE ?? '';
+    body.type === "url_verification" ||
+    (body.challenge != null && body.challenge !== "") ||
+    (body.CHALLENGE != null && body.CHALLENGE !== "");
+  const challenge = body.challenge ?? body.CHALLENGE ?? "";
 
-  if (isUrlVerification && challenge !== '') {
+  if (isUrlVerification && challenge !== "") {
     replyJson(res, 200, { challenge: String(challenge) });
     return;
   }
 
   if (!larkClient) {
-    console.error('APP_ID or APP_SECRET not configured');
-    replyJson(res, 500, { error: 'Server configuration error' });
+    console.error("APP_ID or APP_SECRET not configured");
+    replyJson(res, 500, { error: "Server configuration error" });
     return;
   }
 
@@ -328,23 +475,23 @@ module.exports = async (req, res) => {
   const header = body.header || {};
   const event = body.event || {};
 
-  if (header.event_type === 'im.message.receive_v1') {
+  if (header.event_type === "im.message.receive_v1") {
     try {
       const message = event.message || {};
-      const chatType = message.chat_type || '';
+      const chatType = message.chat_type || "";
       const chatId = message.chat_id;
       // 单聊(p2p) 时发消息需用 open_id；群聊用 chat_id（见飞书文档 230034 / 发送消息）
       const sender = event.sender || {};
       let senderId = sender.sender_id || sender.open_id || message.sender_id;
       // 飞书事件里 sender_id 可能是对象 { open_id, union_id, user_id }，receive_id 必须是字符串
-      if (senderId && typeof senderId === 'object' && senderId.open_id) {
+      if (senderId && typeof senderId === "object" && senderId.open_id) {
         senderId = senderId.open_id;
       }
 
       const content = message.content ? JSON.parse(message.content) : {};
-      const userText = content.text || '';
-      const isP2p = String(chatType).toLowerCase() === 'p2p';
-      const receiveIdType = isP2p ? 'open_id' : 'chat_id';
+      const userText = content.text || "";
+      const isP2p = String(chatType).toLowerCase() === "p2p";
+      const receiveIdType = isP2p ? "open_id" : "chat_id";
       const receiveId = isP2p ? senderId : chatId;
       const tenantKey = header.tenant_key;
       const requestOptions = tenantKey ? withTenantKey(tenantKey) : undefined;
@@ -354,24 +501,27 @@ module.exports = async (req, res) => {
       const replyContent = await getReplyByContent(userText, feishuContext);
       // 飞书发送消息接口要求 content 为 JSON 字符串，不能传对象
       const reply = {
-        msg_type: 'text',
+        msg_type: "text",
         content: JSON.stringify(replyContent),
       };
 
       if (!receiveId) {
-        console.error('Process message: missing receive_id (open_id or chat_id)');
+        console.error(
+          "Process message: missing receive_id (open_id or chat_id)",
+        );
       } else {
         await larkClient.im.message.create(
           {
             params: { receive_id_type: receiveIdType },
             data: { receive_id: receiveId, ...reply },
           },
-          requestOptions
+          requestOptions,
         );
       }
     } catch (err) {
-      console.error('Process message error:', err);
-      if (err.response?.data) console.error('Feishu API response:', err.response.data);
+      console.error("Process message error:", err);
+      if (err.response?.data)
+        console.error("Feishu API response:", err.response.data);
       // 仍返回 200，避免飞书重复推送
     }
   }
