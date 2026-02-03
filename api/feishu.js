@@ -136,10 +136,10 @@ async function loginHandler() {
         // 登录页会包含「登 录」「温馨提示」等文案，有用户信息或非登录页则视为有效
         console.log("loginHandler body", body);
         if (body && body.startsWith("{")) {
-          resolve("登录已失效，请重新登录 OA");
+          resolve("登录有效");
           return;
         }
-        resolve("登录有效");
+        resolve("登录已失效，请重新登录 OA");
       });
     });
     req.on("error", (err) => resolve(`请求失败：${err.message}`));
