@@ -66,6 +66,7 @@ async function uploadImageToFeishu(token, imageBuffer) {
     body: form,
   });
   const json = await res.json();
+  console.log('上传验证码图片到飞书成功，返回数据：', json);
   const key = json.data?.image_key ?? json.image_key;
   return key || null;
 }
@@ -222,7 +223,6 @@ async function reloginHandler(feishuContext) {
           resolve('验证码接口返回格式未知');
           return;
         }
-        console.log('验证码已获取，开始处理，feishuContext:', feishuContext);
         (async () => {
           if (feishuContext?.larkClient && feishuContext?.receiveId) {
             console.log('开始上传验证码图片到飞书');
@@ -231,6 +231,7 @@ async function reloginHandler(feishuContext) {
               resolve('验证码已获取，但飞书 token 获取失败');
               return;
             }
+            console.log('飞书 token 获取成功，开始上传验证码图片到飞书');
             const imageKey = await uploadImageToFeishu(token, imageBuffer);
             if (!imageKey) {
               resolve('验证码已获取，但上传飞书失败');
