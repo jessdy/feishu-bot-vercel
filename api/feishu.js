@@ -724,7 +724,7 @@ module.exports = async (req, res) => {
                 user_id: user_id,
               },
               query: {
-                user_id_type: "open_id",
+                user_id_type: "user_id",
                 department_id_type: "open_department_id",
               },
             },
