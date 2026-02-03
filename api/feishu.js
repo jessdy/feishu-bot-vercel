@@ -32,6 +32,10 @@ const OA_VERIFY_CODE_URL =
   "https://oa.teligen-cloud.com:8280/meip/loginController/verifyCode/ImageCode";
 const OA_VALID_LOGIN_URL =
   "https://oa.teligen-cloud.com:8280/meip/loginController/validLogin";
+const OA_BMTOPIC_GET_URL =
+  "https://oa.teligen-cloud.com:8280/meip/bmtopic/get";
+const OA_BMTOPIC_SAVE_ANSWER_URL =
+  "https://oa.teligen-cloud.com:8280/meip/bmtopic/saveAnswer";
 const OA_VERIFY_CODE_IMAGE_PATH = path.join(
   process.cwd(),
   "/data/.oa-verify-code.png",
@@ -176,6 +180,228 @@ async function getReplyByContent(rawText, feishuContext) {
     const result = await loginWithVerifyCodeHandler(lower);
     return { text: result };
   }
+
+  if (lower && lower === "答题") {
+    const result = await answerQuestionHandler();
+    return { text: result };
+  }
+}
+
+/** 从 cookie 字符串中解析出指定 name 的值 */
+function getCookieValue(cookieStr, name) {
+  if (!cookieStr || !name) return null;
+  const parts = cookieStr.split(";").map((s) => s.trim());
+  for (const part of parts) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === name) {
+      return part.slice(eq + 1).trim();
+    }
+  }
+  return null;
+}
+
+/** bmtopic/get 请求头（与浏览器一致） */
+const OA_BMTOPIC_GET_HEADERS = {
+  Accept: "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+  Connection: "keep-alive",
+  Referer:
+    "https://oa.teligen-cloud.com:8280/meip/view/bmtopic/bmtopic.html",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "User-Agent":
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
+/** bmtopic/saveAnswer 请求头 */
+const OA_BMTOPIC_SAVE_ANSWER_HEADERS = {
+  Accept: "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+  Connection: "keep-alive",
+  "Content-Type": "application/x-www-form-urlencoded",
+  Origin: "https://oa.teligen-cloud.com:8280",
+  Referer:
+    "https://oa.teligen-cloud.com:8280/meip/view/bmtopic/bmtopic.html",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "User-Agent":
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
+/**
+ * 根据 bmtopic/get 返回的题目对象构造 saveAnswer 的 application/x-www-form-urlencoded 请求体
+ * @param {Record<string, unknown>} topic - get 接口返回的题目 JSON
+ * @returns {string}
+ */
+function buildSaveAnswerBody(topic) {
+  const enc = encodeURIComponent;
+  const str = (v) => (v == null ? "null" : String(v));
+  const orderKey =
+    topic.orderKey != null
+      ? Number(topic.orderKey) === topic.orderKey
+        ? String(Math.floor(topic.orderKey))
+        : str(topic.orderKey)
+      : "";
+  const params = new URLSearchParams();
+  params.set("answerTitle", "提交");
+  params.set("commitText", str(topic.answer ?? ""));
+  params.set("topic", str(topic.topic ?? ""));
+  params.set("type", str(topic.type ?? ""));
+  params.set("topicId", str(topic.id ?? ""));
+  params.set("orderKey", orderKey);
+  params.set("analysis", str(topic.analysis ?? ""));
+  params.set("answer", str(topic.answer ?? ""));
+  params.set("aOption", str(topic.aOption ?? ""));
+  params.set("bOption", str(topic.bOption ?? ""));
+  params.set("cOption", str(topic.cOption ?? ""));
+  params.set("dOption", str(topic.dOption ?? ""));
+  params.set("eOption", str(topic.eOption ?? ""));
+  params.set("fOption", str(topic.fOption ?? ""));
+  params.set("gOption", str(topic.gOption ?? ""));
+  params.set("hOption", topic.hOption == null ? "null" : str(topic.hOption));
+  params.set("iOption", topic.iOption == null ? "null" : str(topic.iOption));
+  params.set("jOption", topic.jOption == null ? "null" : str(topic.jOption));
+  return params.toString();
+}
+
+/**
+ * 调用 OA bmtopic/saveAnswer 提交答案
+ * @param {Record<string, unknown>} topic - bmtopic/get 返回的题目对象
+ * @param {string} cookieStr - 完整 Cookie 字符串
+ * @param {string|null} aaaaa - aaaaa 令牌
+ * @returns {Promise<string>} 成功返回「已自动提交」，失败抛出或返回说明
+ */
+function saveAnswerRequest(topic, cookieStr, aaaaa) {
+  return new Promise((resolve, reject) => {
+    const body = buildSaveAnswerBody(topic);
+    const url = new URL(OA_BMTOPIC_SAVE_ANSWER_URL);
+    const headers = {
+      ...OA_BMTOPIC_SAVE_ANSWER_HEADERS,
+      Cookie: cookieStr,
+      "Content-Length": Buffer.byteLength(body, "utf8"),
+    };
+    if (aaaaa) headers.aaaaa = aaaaa;
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method: "POST",
+      headers,
+      rejectUnauthorized: false,
+    };
+
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        if (res.statusCode !== 200) {
+          resolve(`提交接口 HTTP ${res.statusCode}：${raw.slice(0, 200)}`);
+          return;
+        }
+        let json;
+        try {
+          json = raw ? JSON.parse(raw) : {};
+        } catch (_) {
+          resolve("提交成功（返回非 JSON）");
+          return;
+        }
+        if (json.success === true || json.code === 0 || json.status === "ok") {
+          resolve("已自动提交");
+          return;
+        }
+        resolve(
+          "提交接口返回：" + (json.msg ?? json.message ?? JSON.stringify(json)),
+        );
+      });
+    });
+    req.on("error", (err) => reject(err));
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error("提交超时"));
+    });
+    req.write(body, "utf8");
+    req.end();
+  });
+}
+
+/**
+ * 请求 OA 答题接口 bmtopic/get 获取题目/答案；需已登录（cookie 含 JSESSIONID、aaaaa）。
+ * 若返回题目含 id 与 answer，会再调用 saveAnswer 自动提交答案。
+ * @returns {Promise<string>} 成功返回格式化后的题目与答案及提交结果，失败返回原因说明
+ */
+async function answerQuestionHandler() {
+  let cookieStr = "";
+  try {
+    await fs.access(OA_COOKIE_FILE);
+    cookieStr = (await fs.readFile(OA_COOKIE_FILE, "utf8")) || "";
+  } catch (e) {
+    if (e.code === "ENOENT") return "请先发送「登录」完成 OA 登录后再答题";
+    console.error("读取 cookie 失败：", e);
+    return "读取 cookie 失败";
+  }
+  cookieStr = cookieStr.trim();
+  if (!cookieStr) return "无有效 cookie，请先发送「登录」完成 OA 登录";
+
+  const aaaaa = getCookieValue(cookieStr, "aaaaa");
+  const headers = {
+    ...OA_BMTOPIC_GET_HEADERS,
+    Cookie: cookieStr,
+  };
+  if (aaaaa) headers.aaaaa = aaaaa;
+
+  return new Promise((resolve) => {
+    const url = new URL(OA_BMTOPIC_GET_URL);
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method: "GET",
+      headers,
+      rejectUnauthorized: false,
+    };
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        if (res.statusCode !== 200) {
+          resolve(`答题接口请求失败（HTTP ${res.statusCode}）`);
+          return;
+        }
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let json;
+        try {
+          json = JSON.parse(raw);
+        } catch (_) {
+          resolve("答题接口返回非 JSON");
+          return;
+        }
+        const answer = json.answer ?? json.status;
+        const answerText = "今日答案：" + answer;
+
+        if (json.id && json.answer != null) {
+          saveAnswerRequest(json, cookieStr, aaaaa)
+            .then((saveResult) => resolve(answerText + "\n" + saveResult))
+            .catch((err) =>
+              resolve(answerText + "\n提交答案失败：" + err.message),
+            );
+        } else {
+          resolve(answerText);
+        }
+      });
+    });
+    req.on("error", (err) => resolve("答题请求失败：" + err.message));
+    req.setTimeout(10000, () => {
+      req.destroy();
+      resolve("答题请求超时");
+    });
+    req.end();
+  });
 }
 
 /** validLogin 请求头（与浏览器一致） */
