@@ -77,8 +77,8 @@ async function uploadImageToFeishu(token, imageBuffer) {
 async function loginHandler() {
   let cookieStr;
   try {
-    if (!fs.existsSync(OA_COOKIE_FILE)) {
-      fs.writeFileSync(OA_COOKIE_FILE, '');
+    if (!(await fs.exists(OA_COOKIE_FILE))) {
+      await fs.writeFile(OA_COOKIE_FILE, '');
     }
     cookieStr = await fs.readFile(OA_COOKIE_FILE, 'utf8');
   } catch (e) {
