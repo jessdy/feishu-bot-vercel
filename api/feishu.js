@@ -431,8 +431,8 @@ const OA_VALID_LOGIN_HEADERS = {
  * @param {string} verifyCode - 4 位验证码
  * @returns {Promise<string>} 成功返回「登录有效」，失败返回原因说明
  */
-async function loginWithVerifyCodeHandler(verifyCode, union_id, user_id, userInfo) {
-  userInfo = userInfo.data;
+async function loginWithVerifyCodeHandler(verifyCode, union_id, user_id, user) {
+  const userInfo = user.data?.user;
   const account = userInfo.user_id;
   const password = userInfo.employee_no;
   if (!account || !password) {
