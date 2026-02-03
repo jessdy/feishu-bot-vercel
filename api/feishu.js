@@ -255,7 +255,9 @@ async function loginWithVerifyCodeHandler(verifyCode) {
         const setCookie = res.headers["set-cookie"];
         if (setCookie && setCookie.length) {
           try {
-            await fs.writeFile(OA_COOKIE_FILE, setCookie.join("; "));
+            await fs.writeFile(OA_COOKIE_FILE, setCookie.join("; ") + ";" + cookieStr);
+            console.log("loginWithVerifyCodeHandler cookieStr", cookieStr);
+            console.log("loginWithVerifyCodeHandler setCookie", setCookie);
           } catch (e) {
             console.error("写入 cookie 失败：", e);
           }
