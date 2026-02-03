@@ -105,9 +105,10 @@ module.exports = async (req, res) => {
       const content = message.content ? JSON.parse(message.content) : {};
       const userText = content.text || '';
       const replyContent = getReplyByContent(userText);
+      // 飞书发送消息接口要求 content 为 JSON 字符串，不能传对象
       const reply = {
         msg_type: 'text',
-        content: replyContent,
+        content: JSON.stringify(replyContent),
       };
 
       const isP2p = String(chatType).toLowerCase() === 'p2p';
