@@ -83,6 +83,7 @@ async function loginHandler() {
     cookieStr = await fs.readFile(OA_COOKIE_FILE, 'utf8');
   } catch (e) {
     if (e.code === 'ENOENT') return '未找到 cookie 文件，请先配置 .oa-cookie 或 OA_COOKIE_FILE';
+    console.error('读取 cookie 文件失败：', e);
     throw e;
   }
   cookieStr = (cookieStr || '').trim();
