@@ -311,12 +311,12 @@ function saveAnswerRequest(topic, cookieStr, aaaaa) {
           resolve("提交成功（返回非 JSON）");
           return;
         }
-        if (json.success === true || json.code === 0 || json.status === "ok") {
+        if (json.isRight === "10") {
           resolve("已自动提交");
           return;
         }
         resolve(
-          "提交接口返回：" + (json.msg ?? json.message ?? JSON.stringify(json)),
+          "今日已答题，无需重复提交" + (json.msg ?? json.message ?? JSON.stringify(json)),
         );
       });
     });
@@ -705,7 +705,7 @@ module.exports = async (req, res) => {
       if (senderId && typeof senderId === "object" && senderId.open_id) {
         senderId = senderId.open_id;
       }
-
+      console.log("sender", sender);
       const content = message.content ? JSON.parse(message.content) : {};
       const userText = content.text || "";
       const isP2p = String(chatType).toLowerCase() === "p2p";
