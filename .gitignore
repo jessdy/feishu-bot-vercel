@@ -1,4 +1,6 @@
 node_modules
 .env
+.oa-cookie
+.oa-verify-code.png
 logs
 *.log
