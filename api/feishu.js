@@ -90,7 +90,7 @@ async function loginHandler() {
   }
   cookieStr = (cookieStr || '').trim();
   if (!cookieStr) {
-    await reloginHandler();
+    return await reloginHandler();
   }
 
   return new Promise((resolve) => {
@@ -211,7 +211,11 @@ async function reloginHandler(feishuContext) {
             const json = JSON.parse(body.toString('utf8'));
             const base64 = json.data ?? json.image ?? json.code ?? json.content;
             if (base64) imageBuffer = Buffer.from(base64, 'base64');
-          } catch (_) {}
+          } catch (_) {
+            console.error('解析验证码接口返回数据失败：', body.toString('utf8'));
+            resolve('验证码接口返回数据解析失败');
+            return;
+          }
         }
         if (!imageBuffer && (contentType.includes('image/') || body.length > 0)) imageBuffer = body;
         if (!imageBuffer) {
