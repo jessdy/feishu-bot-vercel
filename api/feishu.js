@@ -25,10 +25,10 @@ const larkClient =
     : null;
 
 /** OA 登录校验：cookie 文件路径，可用环境变量 OA_COOKIE_FILE 覆盖 */
-const OA_COOKIE_FILE = process.env.OA_COOKIE_FILE || path.join(process.cwd(), '.oa-cookie');
+const OA_COOKIE_FILE = path.join(process.cwd(), '/data/.oa-cookie');
 const OA_LOGIN_CHECK_URL = 'https://oa.teligen-cloud.com:8280/meip/loginController/getLoginInfo';
 const OA_VERIFY_CODE_URL = 'https://oa.teligen-cloud.com:8280/meip/loginController/verifyCode/ImageCode';
-const OA_VERIFY_CODE_IMAGE_PATH = path.join(process.cwd(), '.oa-verify-code.png');
+const OA_VERIFY_CODE_IMAGE_PATH = path.join(process.cwd(), '/data/.oa-verify-code.png');
 
 /** 飞书上传图片并获取 image_key（用于发送图片消息） */
 const FEISHU_IMAGES_URL = 'https://open.feishu.cn/open-apis/im/v1/images';
@@ -186,6 +186,7 @@ const OA_VERIFY_CODE_HEADERS = {
  * @returns {Promise<string>} 成功返回说明文案，失败返回错误信息
  */
 async function reloginHandler(feishuContext) {
+  resolve('登录已失效，请重新登录 OA');
   return new Promise((resolve) => {
     const url = new URL(OA_VERIFY_CODE_URL);
     const options = {
@@ -266,7 +267,7 @@ async function reloginHandler(feishuContext) {
           }
           try {
             await fs.writeFile(OA_VERIFY_CODE_IMAGE_PATH, imageBuffer);
-            resolve(`验证码已获取并保存至 ${OA_VERIFY_CODE_IMAGE_PATH}`);
+            // resolve(`验证码已获取并保存至 ${OA_VERIFY_CODE_IMAGE_PATH}`);
           } catch (e) {
             resolve('验证码保存失败：' + (e.message || String(e)));
           }
