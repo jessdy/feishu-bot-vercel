@@ -721,10 +721,10 @@ module.exports = async (req, res) => {
           userInfo = await larkClient.contact.v3.user.get(
             {
               path: {
-                user_id: user_id,
+                user_id: union_id,
               },
               query: {
-                user_id_type: "user_id",
+                user_id_type: "union_id",
                 department_id_type: "open_department_id",
               },
             },
