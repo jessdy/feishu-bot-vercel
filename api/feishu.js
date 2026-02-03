@@ -168,25 +168,11 @@ async function getReplyByContent(rawText, feishuContext) {
     return { text: `${result}\n${verifyMsg}` };
   }
 
+  // 如果输入的是4位验证码，则调用登录接口
+  console.log("lower", lower);
   if (lower && lower.length === 4) {
-    const result = await loginWithVerifyCodeHandler(lower);
-    if (result === "登录有效") {
-      return { text: "登录成功" };
-    }
+    return await loginWithVerifyCodeHandler(lower);
   }
-
-  if (lower === "帮助" || lower === "help") {
-    return {
-      text: "可用指令：\n• 帮助 / help - 显示本说明\n• ping - 测活\n• 其他内容 - 原样回显",
-    };
-  }
-  if (lower === "ping") {
-    return { text: "pong" };
-  }
-  if (text) {
-    return { text: `你说了：${text}` };
-  }
-  return { text: "（空）" };
 }
 
 /** validLogin 请求头（与浏览器一致） */
