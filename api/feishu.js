@@ -212,7 +212,7 @@ async function reloginHandler(feishuContext) {
             const json = JSON.parse(body.toString('utf8'));
             const base64 = json.png_base64;
             console.log('验证码接口返回数据：', json);
-            if (base64) imageBuffer = Buffer.from(base64, 'base64');
+            if (base64) imageBuffer = Buffer.from(base64.slice(4), 'base64');
           } catch (_) {
             console.error('解析验证码接口返回数据失败：', body.toString('utf8'));
             resolve('验证码接口返回数据解析失败');
