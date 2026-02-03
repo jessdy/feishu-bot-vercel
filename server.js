@@ -34,5 +34,5 @@ app.get('/health', (_, res) => {
 
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Feishu bot listening on http://0.0.0.0:${PORT}, APP_ID: ${process.env.APP_ID}`);
+  console.log(`Feishu bot listening on http://0.0.0.0:${PORT}, APP_ID: ${process.env.APP_ID}, OA_COOKIE_FILE: ${process.env.OA_COOKIE_FILE}`);
 });
