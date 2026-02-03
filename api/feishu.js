@@ -114,6 +114,7 @@ async function loginHandler() {
 
   return new Promise((resolve) => {
     const url = new URL(OA_LOGIN_CHECK_URL);
+    console.log("loginHandler cookieStr", cookieStr);
     const options = {
       hostname: url.hostname,
       port: url.port || 443,
@@ -133,6 +134,7 @@ async function loginHandler() {
           return;
         }
         // 登录页会包含「登 录」「温馨提示」等文案，有用户信息或非登录页则视为有效
+        console.log("loginHandler body", body);
         if (body && body.startsWith("{")) {
           resolve("登录已失效，请重新登录 OA");
           return;
@@ -266,6 +268,7 @@ async function loginWithVerifyCodeHandler(verifyCode) {
           resolve("登录接口返回非 JSON");
           return;
         }
+        console.log("loginWithVerifyCodeHandler json", json);
         // 常见成功：code 0 或 success true；失败：code 非 0 或 message
         const code = json.code ?? json.status;
         const success = json.success === true || code === 0 || code === "0";
