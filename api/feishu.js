@@ -723,7 +723,7 @@ module.exports = async (req, res) => {
               path: {
                 user_id: union_id,
               },
-              query: {
+              params: {
                 user_id_type: "union_id",
                 department_id_type: "open_department_id",
               },
