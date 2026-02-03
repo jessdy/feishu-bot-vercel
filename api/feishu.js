@@ -186,8 +186,8 @@ const OA_VERIFY_CODE_HEADERS = {
  * @returns {Promise<string>} 成功返回说明文案，失败返回错误信息
  */
 async function reloginHandler(feishuContext) {
-  resolve('登录已失效，请重新登录 OA');
   return new Promise((resolve) => {
+    resolve('验证码获取失败，请重新登录 OA');
     const url = new URL(OA_VERIFY_CODE_URL);
     const options = {
       hostname: url.hostname,
