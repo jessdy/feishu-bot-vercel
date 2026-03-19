@@ -496,7 +496,7 @@ async function checkInHandler(userInfo, union_id) {
           json = raw ? JSON.parse(raw) : {};
           let attCountList = JSON.parse(JSON.parse(json.attCountList));
           daka = attCountList.filter(item => item.workDateType == "0" && (!item.startTime || !item.endTime))
-            .map(item => item.dateStr + ": " + (item.startTime ? (item.startTime > "12" ? "上午" : "下午") : "上午、下午") + "未打卡");
+            .map(item => item.dateStr + ": " + (item.startTime ? (item.startTime > "12" ? "上午" : "下午") : "上午、下午") + "未打卡").join("\n");
           if (attCountList.length > 0) {
             resolve(daka);
             return;
