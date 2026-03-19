@@ -38,6 +38,12 @@ const OA_BMTOPIC_SAVE_ANSWER_URL =
   "https://oa.teligen-cloud.com:8280/meip/bmtopic/saveAnswer";
 const OA_CHECK_IN_URL =
   "https://oa.teligen-cloud.com:8280/meip/dcardController/getAttCountList";
+const OA_DAILY_REPORT_LIST_URL =
+  "https://oa.teligen-cloud.com:8280/meip/dayReportController/getHrWorkDailyApplyList";
+const OA_DAILY_REPORT_READ_URL =
+  "https://oa.teligen-cloud.com:8280/meip/dayReportController/isInWeekApply";
+const OA_DAILY_REPORT_VIEW_URL =
+  "https://oa.teligen-cloud.com:8280/meip/dayReportController/getHrWorkDailyView";
 const OA_VERIFY_CODE_IMAGE_PATH = path.join(
   process.cwd(),
   "/data/.oa-verify-code.png",
@@ -195,6 +201,11 @@ async function getReplyByContent(rawText, feishuContext, union_id, user_id, user
     const result = await checkInHandler(userInfo, union_id);
     return { text: result };
   }
+
+  if (lower && lower === "日报") {
+    const result = await dailyReportHandler(userInfo, union_id);
+    return { text: result };
+  }
 }
 
 /** 从 cookie 字符串中解析出指定 name 的值 */
@@ -242,11 +253,150 @@ const OA_CHECK_IN_HEADERS = {
   "X-Requested-With": "XMLHttpRequest",
 };
 
+/** 日报接口请求头 */
+const OA_DAILY_REPORT_HEADERS = {
+  Accept: "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+  Connection: "keep-alive",
+  "Content-Type": "application/x-www-form-urlencoded",
+  Origin: "https://oa.teligen-cloud.com:8280",
+  Referer:
+    "https://oa.teligen-cloud.com:8280/meip/view/dayReport/dayReportSelect.html",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "User-Agent":
+    "Mozilla/5.0 (Linux; Android 14; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
 /** dcardController/getAttCountList 入参 queryDate 格式：YYYY-M（例如 2026-3） */
 function getQueryDateStr(date = new Date()) {
   const y = date.getFullYear();
   const m = date.getMonth() + 1; // 1-12
   return `${y}-${m}`;
+}
+
+/** 获取上海时区最近 7 天的日期范围（结束日期包含当天） */
+function getDailyReportDateRange(now = new Date()) {
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const getPart = (type) => dateParts.find((part) => part.type === type)?.value;
+  const endDate = `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+  const start = new Date(`${endDate}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - 7);
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate,
+  };
+}
+
+/** 解析 OA 中可能被重复 JSON 编码的返回值 */
+function parseNestedJson(value) {
+  let result = value;
+  for (let i = 0; i < 3 && typeof result === "string"; i += 1) {
+    try {
+      result = JSON.parse(result);
+    } catch (_) {
+      break;
+    }
+  }
+  return result;
+}
+
+/** 从 OA 常见响应包装中提取记录数组 */
+function extractRecordList(payload) {
+  const value = parseNestedJson(payload);
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+  const keys = ["rows", "list", "records", "items", "applyList", "data", "result"];
+  for (const key of keys) {
+    if (value[key] == null) continue;
+    const nested = extractRecordList(value[key]);
+    if (nested.length || Array.isArray(parseNestedJson(value[key]))) return nested;
+  }
+  return [];
+}
+
+/** 从 OA 常见响应包装中提取日报详情对象 */
+function extractDetail(payload) {
+  function findDetail(input, depth) {
+    const value = parseNestedJson(input);
+    if (!value || typeof value !== "object" || depth > 5) return null;
+    if (
+      value.applicantName != null ||
+      value.workProgressDesc != null ||
+      value.workProgress != null
+    ) {
+      return value;
+    }
+    for (const nested of Object.values(value)) {
+      const found = findDetail(nested, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  return findDetail(payload, 0) || {};
+}
+
+/**
+ * 使用当前用户的 OA Cookie 发起表单请求。
+ * @returns {Promise<unknown>} JSON 响应；非 JSON 时返回原始文本
+ */
+function requestOaForm(urlString, params, cookieStr, aaaaa) {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams(params).toString();
+    const url = new URL(urlString);
+    const headers = {
+      ...OA_DAILY_REPORT_HEADERS,
+      Cookie: cookieStr,
+      "Content-Length": Buffer.byteLength(body, "utf8"),
+    };
+    if (aaaaa) headers.aaaaa = aaaaa;
+
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname + url.search,
+        method: "POST",
+        headers,
+        rejectUnauthorized: false,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          if (res.statusCode !== 200) {
+            reject(
+              new Error(`HTTP ${res.statusCode}${raw ? `：${raw.slice(0, 200)}` : ""}`),
+            );
+            return;
+          }
+          if (/^\s*</.test(raw)) {
+            reject(new Error("OA 登录已失效，请重新发送「登录」"));
+            return;
+          }
+          try {
+            resolve(raw ? JSON.parse(raw) : {});
+          } catch (_) {
+            resolve(raw);
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.setTimeout(10000, () => {
+      req.destroy(new Error("请求超时"));
+    });
+    req.write(body, "utf8");
+    req.end();
+  });
 }
 
 /** bmtopic/saveAnswer 请求头 */
@@ -517,6 +667,129 @@ async function checkInHandler(userInfo, union_id) {
     req.write(body, "utf8");
     req.end();
   });
+}
+
+/**
+ * 查询当前用户作为负责人的日报，逐条标记已读并返回详情。
+ */
+async function dailyReportHandler(userInfo, union_id) {
+  const feishuUser = userInfo?.data?.user;
+  const leaderId = feishuUser?.user_id;
+  if (!leaderId) return "无法获取当前飞书用户信息，请稍后重试";
+
+  let cookieStr = "";
+  try {
+    cookieStr =
+      (await fs.readFile(
+        OA_COOKIE_FILE + "_" + (feishuUser.union_id || union_id),
+        "utf8",
+      )) || "";
+  } catch (e) {
+    if (e.code === "ENOENT") return "请先发送「登录」完成 OA 登录后再查看日报";
+    console.error("读取 cookie 失败：", e);
+    return "读取 cookie 失败";
+  }
+  cookieStr = cookieStr.trim();
+  if (!cookieStr) return "无有效 cookie，请先发送「登录」完成 OA 登录";
+
+  const aaaaa = getCookieValue(cookieStr, "aaaaa");
+  const { startDate, endDate } = getDailyReportDateRange();
+  let records;
+  try {
+    const response = await requestOaForm(
+      OA_DAILY_REPORT_LIST_URL,
+      {
+        startDate,
+        endDate,
+        teamId: "",
+        teamName: "",
+        queryBy: "teamId",
+        showAllStat: "false",
+        doFilter: "false",
+      },
+      cookieStr,
+      aaaaa,
+    );
+    records = extractRecordList(response).filter(
+      (record) => String(record?.leaderId ?? "") === String(leaderId),
+    );
+  } catch (e) {
+    console.error("查询日报失败：", e);
+    return "查询日报失败：" + e.message;
+  }
+
+  if (!records.length) return "已读日报 0 条，明细如下：\n暂无日报";
+
+  let readCount = 0;
+  const details = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index] || {};
+    const applicantLoginName =
+      record.applicantLoginName ?? record.loginName ?? record.applicant;
+    const rawApplyTime =
+      record.applyTime ?? record.applyDate ?? record.workDate ?? "";
+    const applyTime = String(rawApplyTime).slice(0, 10);
+    const dataId =
+      record.dataId ?? record.id ?? record.applyId ?? record.workDailyApplyId;
+    let readError = "";
+    let detailError = "";
+
+    if (!applicantLoginName || !applyTime) {
+      readError = "缺少申请人账号或日报日期";
+    } else {
+      try {
+        await requestOaForm(
+          OA_DAILY_REPORT_READ_URL,
+          { applicantLoginName: String(applicantLoginName), applyTime },
+          cookieStr,
+          aaaaa,
+        );
+        readCount += 1;
+      } catch (e) {
+        readError = e.message;
+        console.error("标记日报已读失败：", dataId, e);
+      }
+    }
+
+    let detail = {};
+    if (!dataId) {
+      detailError = "缺少日报 ID";
+    } else {
+      try {
+        const response = await requestOaForm(
+          OA_DAILY_REPORT_VIEW_URL,
+          {
+            dataId: String(dataId),
+            dictTypes:
+              "planType,workreport-work-parent-category,workreport-work-category,workreport-work-nature,propritys",
+          },
+          cookieStr,
+          aaaaa,
+        );
+        detail = extractDetail(response);
+      } catch (e) {
+        detailError = e.message;
+        console.error("获取日报详情失败：", dataId, e);
+      }
+    }
+
+    const applicantName =
+      detail.applicantName ?? record.applicantName ?? applicantLoginName ?? "未知";
+    const workProgressDesc =
+      detail.workProgressDesc ?? record.workProgressDesc ?? "未填写";
+    const workProgress =
+      detail.workProgress ?? record.workProgress ?? "未填写";
+    const lines = [
+      `${index + 1}. ${String(applicantName)}`,
+      `工作进展：${String(workProgressDesc)}`,
+      `完成进度：${String(workProgress)}`,
+    ];
+    if (readError) lines.push(`已读失败：${readError}`);
+    if (detailError) lines.push(`详情获取失败：${detailError}`);
+    details.push(lines.join("\n"));
+  }
+
+  return `已读日报 ${readCount} 条，明细如下：\n${details.join("\n\n")}`;
 }
 
 /** validLogin 请求头（与浏览器一致） */
