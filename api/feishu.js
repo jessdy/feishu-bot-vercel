@@ -282,7 +282,13 @@ function buildSaveAnswerBody(topic) {
       : "";
   const params = new URLSearchParams();
   params.set("answerTitle", "提交");
-  params.set("commitText", str(topic.answer ?? ""));
+  // params.set("commitText", str(topic.answer ?? ""));
+  const rawAnswer = str(topic.answer ?? "");
+  const isMulti = rawAnswer.length > 1;
+  const commitText = isMulti
+    ? rawAnswer.split("").filter((c) => c.trim()).join(",")
+    : rawAnswer;
+  params.set("commitText", commitText);
   params.set("topic", str(topic.topic ?? ""));
   params.set("type", str(topic.type ?? ""));
   params.set("topicId", str(topic.id ?? ""));
