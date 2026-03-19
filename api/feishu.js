@@ -36,6 +36,8 @@ const OA_BMTOPIC_GET_URL =
   "https://oa.teligen-cloud.com:8280/meip/bmtopic/get";
 const OA_BMTOPIC_SAVE_ANSWER_URL =
   "https://oa.teligen-cloud.com:8280/meip/bmtopic/saveAnswer";
+const OA_CHECK_IN_URL =
+  "https://oa.teligen-cloud.com:8280/meip/dcardController/getAttCountList";
 const OA_VERIFY_CODE_IMAGE_PATH = path.join(
   process.cwd(),
   "/data/.oa-verify-code.png",
@@ -188,6 +190,11 @@ async function getReplyByContent(rawText, feishuContext, union_id, user_id, user
     const result = await answerQuestionHandler(userInfo, union_id);
     return { text: result };
   }
+
+  if (lower && lower === "打卡") {
+    const result = await checkInHandler(userInfo, union_id);
+    return { text: result };
+  }
 }
 
 /** 从 cookie 字符串中解析出指定 name 的值 */
@@ -217,6 +224,30 @@ const OA_BMTOPIC_GET_HEADERS = {
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0",
   "X-Requested-With": "XMLHttpRequest",
 };
+
+/** dcardController/getAttCountList 请求头（与浏览器一致） */
+const OA_CHECK_IN_HEADERS = {
+  Accept: "application/json",
+  "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+  Connection: "keep-alive",
+  "Content-Type": "application/json;charset=UTF-8",
+  Origin: "https://oa.teligen-cloud.com:8280",
+  Referer:
+    "https://oa.teligen-cloud.com:8280/meip/view/location/signCalendarList.html",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
+  "User-Agent":
+    "Mozilla/5.0 (Linux; Android 8.0.0; SM-G955U Build/R16NW) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
+  "X-Requested-With": "XMLHttpRequest",
+};
+
+/** dcardController/getAttCountList 入参 queryDate 格式：YYYY-M（例如 2026-3） */
+function getQueryDateStr(date = new Date()) {
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1; // 1-12
+  return `${y}-${m}`;
+}
 
 /** bmtopic/saveAnswer 请求头 */
 const OA_BMTOPIC_SAVE_ANSWER_HEADERS = {
@@ -354,7 +385,7 @@ async function answerQuestionHandler(userInfo, union_id) {
 
   const aaaaa = getCookieValue(cookieStr, "aaaaa");
   const headers = {
-    ...OA_BMTOPIC_GET_HEADERS,
+    ...OA_CHECK_IN_HEADERS,
     Cookie: cookieStr,
   };
   if (aaaaa) headers.aaaaa = aaaaa;
@@ -408,6 +439,79 @@ async function answerQuestionHandler(userInfo, union_id) {
   });
 }
 
+async function checkInHandler(userInfo, union_id) {
+  userInfo = userInfo.data.user;
+  let cookieStr = "";
+  try {
+    await fs.access(OA_COOKIE_FILE + "_" + userInfo.union_id);
+    cookieStr = (await fs.readFile(OA_COOKIE_FILE + "_" + userInfo.union_id, "utf8")) || "";
+  } catch (e) {
+    if (e.code === "ENOENT") return "请先发送「登录」完成 OA 登录后再打卡";
+    console.error("读取 cookie 失败：", e);
+    return "读取 cookie 失败";
+  }
+  cookieStr = cookieStr.trim();
+  if (!cookieStr) return "无有效 cookie，请先发送「登录」完成 OA 登录后再打卡";
+
+  const aaaaa = getCookieValue(cookieStr, "aaaaa");
+  const headers = {
+    ...OA_CHECK_IN_HEADERS,
+    Cookie: cookieStr,
+  };
+  if (aaaaa) headers.aaaaa = aaaaa;
+
+  // 对照你的 curl：body 为 {"queryDate":"2026-3"}
+  const body = JSON.stringify({ queryDate: getQueryDateStr() });
+  headers["Content-Length"] = Buffer.byteLength(body, "utf8");
+
+  return new Promise((resolve) => {
+    const url = new URL(OA_CHECK_IN_URL);
+    const options = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method: "POST",
+      headers,
+      rejectUnauthorized: false,
+    };
+
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        if (res.statusCode !== 200) {
+          resolve(`打卡接口请求失败（HTTP ${res.statusCode}）`);
+          return;
+        }
+
+        const raw = Buffer.concat(chunks).toString("utf8");
+        let json, daka;
+        try {
+          json = raw ? JSON.parse(raw) : {};
+          let attCountList = JSON.parse(JSON.parse(json.attCountList));
+          daka = attCountList.filter(item => item.workDateType == "0" && (item.amAttendanceIsNormal === false || item.pmAttendanceIsNormal === false)).map(item => item.dateStr + ": " + item.startTime + " - " + item.endTime).join("\n");
+          if (attCountList.length > 0) {
+            resolve(daka);
+            return;
+          }
+        } catch (_) {
+          resolve("打卡接口返回非 JSON");
+          return;
+        }
+      });
+    });
+
+    req.on("error", (err) => resolve("打卡请求失败：" + err.message));
+    req.setTimeout(10000, () => {
+      req.destroy();
+      resolve("打卡请求超时");
+    });
+
+    req.write(body, "utf8");
+    req.end();
+  });
+}
+
 /** validLogin 请求头（与浏览器一致） */
 const OA_VALID_LOGIN_HEADERS = {
   Accept: "application/json",
@@ -421,7 +525,7 @@ const OA_VALID_LOGIN_HEADERS = {
   "Sec-Fetch-Mode": "cors",
   "Sec-Fetch-Site": "same-origin",
   "User-Agent":
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/144.0.0.0",
+    "Mozilla/5.0 (Linux; Android 8.0.0; SM-G955U Build/R16NW) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36",
   "X-Requested-With": "XMLHttpRequest",
   aaaaa: "null",
 };
